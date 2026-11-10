@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Vapi from '@vapi-ai/web';
-import { Mic, MicOff, PhoneCall, PhoneOff, Settings, Volume2, Sparkles, Copy, Check, Info, X, HelpCircle } from 'lucide-react';
+import { Mic, MicOff, PhoneCall, PhoneOff, ChevronDown, Smartphone, Phone, Sparkles, Volume2 } from 'lucide-react';
 import { VAPI_CONFIG_GUIDE } from '../data/vapiPrompt';
 import { COMPANY_INFO } from '../data/mockData';
 
@@ -20,7 +20,7 @@ function getVapiConstructor(): any {
 
 export const VapiWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'call' | 'setup'>('call');
+  const [showPhoneDisplay, setShowPhoneDisplay] = useState(false);
   const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'speaking'>('idle');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -31,31 +31,18 @@ export const VapiWidget: React.FC = () => {
     }
   ]);
 
-  // Keys can come from env or localStorage
   const envPublicKey = (import.meta as any).env?.VITE_VAPI_PUBLIC_KEY || '';
   const envAssistantId = (import.meta as any).env?.VITE_VAPI_ASSISTANT_ID || '';
 
-  const [publicKey, setPublicKey] = useState(() => {
-    const stored = localStorage.getItem('vapi_public_key');
-    if (stored) return stored;
-    return envPublicKey && !envPublicKey.includes('YOUR_') && !envPublicKey.includes('MY_') ? envPublicKey : '';
-  });
-  const [assistantId, setAssistantId] = useState(() => {
-    const stored = localStorage.getItem('vapi_assistant_id');
-    if (stored) return stored;
-    return envAssistantId && !envAssistantId.includes('YOUR_') && !envAssistantId.includes('MY_') ? envAssistantId : '';
-  });
+  const publicKey = localStorage.getItem('vapi_public_key') || (envPublicKey && !envPublicKey.includes('YOUR_') && !envPublicKey.includes('MY_') ? envPublicKey : '');
+  const assistantId = localStorage.getItem('vapi_assistant_id') || (envAssistantId && !envAssistantId.includes('YOUR_') && !envAssistantId.includes('MY_') ? envAssistantId : '');
 
-  const [copiedPrompt, setCopiedPrompt] = useState(false);
   const vapiRef = useRef<any>(null);
   const timerRef = useRef<any>(null);
 
-  // Initialize Vapi instance when publicKey changes
+  // Initialize Vapi instance when valid key is provided
   useEffect(() => {
-    const isRealKey = publicKey && 
-      publicKey.trim().length > 10 && 
-      !publicKey.includes('YOUR_') && 
-      !publicKey.includes('MY_');
+    const isRealKey = publicKey && publicKey.trim().length > 10;
 
     if (isRealKey) {
       try {
@@ -116,7 +103,7 @@ export const VapiWidget: React.FC = () => {
     };
   }, [publicKey]);
 
-  // Timer effect
+  // Duration timer
   useEffect(() => {
     if (callStatus === 'connected' || callStatus === 'speaking') {
       timerRef.current = setInterval(() => {
@@ -129,17 +116,11 @@ export const VapiWidget: React.FC = () => {
   }, [callStatus]);
 
   const handleStartCall = async () => {
-    const isRealKey = publicKey && 
-      publicKey.trim().length > 10 && 
-      !publicKey.includes('YOUR_') && 
-      !publicKey.includes('MY_');
-    const isRealAssistant = assistantId && 
-      assistantId.trim().length > 5 && 
-      !assistantId.includes('YOUR_') && 
-      !assistantId.includes('MY_');
+    const isRealKey = publicKey && publicKey.trim().length > 10;
+    const isRealAssistant = assistantId && assistantId.trim().length > 5;
 
     if (!isRealKey || !isRealAssistant) {
-      // Simulate call if keys aren't configured yet so user can test the UI and voice
+      // Direct speech simulator: begins calling immediately with zero setup required
       setCallStatus('connecting');
       setTimeout(() => {
         setCallStatus('connected');
@@ -149,7 +130,6 @@ export const VapiWidget: React.FC = () => {
             text: VAPI_CONFIG_GUIDE.firstMessage
           }
         ]);
-        // Speak using web speech API if available
         if ('speechSynthesis' in window) {
           const utterance = new SpeechSynthesisUtterance(VAPI_CONFIG_GUIDE.firstMessage);
           utterance.rate = 1.0;
@@ -158,7 +138,7 @@ export const VapiWidget: React.FC = () => {
           utterance.onend = () => setCallStatus('connected');
           window.speechSynthesis.speak(utterance);
         }
-      }, 1000);
+      }, 800);
       return;
     }
 
@@ -177,8 +157,8 @@ export const VapiWidget: React.FC = () => {
         throw new Error('Vapi constructor not available');
       }
     } catch (err) {
-      console.error('Error starting Vapi call:', err);
-      // Fallback gracefully to simulated voice
+      console.error('Error starting call:', err);
+      // Fallback smoothly to simulated voice
       setCallStatus('connected');
       if ('speechSynthesis' in window) {
         const utterance = new SpeechSynthesisUtterance(VAPI_CONFIG_GUIDE.firstMessage);
@@ -209,19 +189,6 @@ export const VapiWidget: React.FC = () => {
     setIsMuted(!isMuted);
   };
 
-  const handleSaveKeys = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('vapi_public_key', publicKey);
-    localStorage.setItem('vapi_assistant_id', assistantId);
-    setActiveTab('call');
-  };
-
-  const handleCopyPrompt = () => {
-    navigator.clipboard.writeText(VAPI_CONFIG_GUIDE.systemPrompt);
-    setCopiedPrompt(true);
-    setTimeout(() => setCopiedPrompt(false), 2000);
-  };
-
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -230,356 +197,218 @@ export const VapiWidget: React.FC = () => {
 
   return (
     <>
-      {/* Floating AI Receptionist Widget Trigger Button (Bottom Left) */}
-      <div className="fixed bottom-4 left-4 z-40 flex items-center gap-2">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className={`flex items-center gap-2.5 px-4 py-3 rounded-full shadow-2xl transition-all duration-300 border cursor-pointer ${
-            callStatus === 'connected' || callStatus === 'speaking'
-              ? 'bg-emerald-600 text-white border-emerald-400 ring-4 ring-emerald-400/30 animate-pulse'
-              : 'bg-[#0b1a30] hover:bg-slate-900 text-white border-amber-400/80 hover:border-amber-400'
-          }`}
-          aria-label="Open AI Receptionist"
-        >
-          {/* Animated Mic Icon */}
-          <div className="relative flex items-center justify-center">
-            <div className={`w-3 h-3 rounded-full ${callStatus === 'speaking' ? 'bg-amber-400 animate-ping' : 'bg-amber-400'}`}></div>
-            <Mic className="w-4 h-4 text-white absolute" />
-          </div>
+      {/* Floating Trigger Button (Bottom Left) */}
+      {!isOpen && (
+        <aside aria-label="AI Receptionist" className="fixed bottom-4 left-4 z-40">
+          <button
+            onClick={() => setIsOpen(true)}
+            className="flex items-center gap-3 px-4 py-3 rounded-full bg-[#0a58ca] hover:bg-[#084298] text-white shadow-2xl border-2 border-white/80 transition-all duration-300 hover:scale-105 cursor-pointer group"
+            aria-label="Open AI Voice Receptionist"
+          >
+            {/* Small avatar thumbnail with online dot */}
+            <div className="relative w-8 h-8 rounded-full overflow-hidden border border-white shrink-0 bg-blue-100">
+              <img
+                src="/assets/crops/receptionist_paul.png"
+                alt="Paul AI Receptionist"
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-400 border border-white"></span>
+            </div>
 
-          <div className="flex flex-col text-left">
-            <span className="text-[10px] font-bold tracking-wider text-amber-300 uppercase leading-none">
-              AI Reception
-            </span>
-            <span className="text-xs font-bold leading-tight">
-              {callStatus === 'idle'
-                ? 'Talk to AI Receptionist'
-                : callStatus === 'connecting'
-                ? 'Connecting...'
-                : `In Call (${formatDuration(callDuration)})`}
-            </span>
-          </div>
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] font-bold tracking-wider text-blue-200 uppercase leading-none">
+                AI Receptionist
+              </span>
+              <span className="text-xs font-bold leading-tight">
+                Talk to us!
+              </span>
+            </div>
 
-          <span className="w-2 h-2 rounded-full bg-emerald-400 ml-1"></span>
-        </button>
-      </div>
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          </button>
+        </aside>
+      )}
 
-      {/* Main AI Receptionist Drawer / Modal */}
+      {/* Main Clean Receptionist Card matching user's design image */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:justify-start p-4 sm:p-6 bg-slate-950/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+        <div className="fixed bottom-4 left-4 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="bg-white rounded-3xl w-[330px] sm:w-[350px] shadow-2xl border border-slate-200/90 overflow-hidden flex flex-col font-sans">
             
-            {/* Header */}
-            <div className="bg-[#0b1a30] text-white p-4 sm:p-5 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold">
-                  <Mic className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-sm sm:text-base font-display">
-                    Signature AI Reception
-                  </h3>
-                  <p className="text-[11px] text-amber-300">
-                    Instant Voice Quotes & Auckland Support
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setActiveTab(activeTab === 'call' ? 'setup' : 'call')}
-                  className={`p-2 rounded-lg transition-colors cursor-pointer ${
-                    activeTab === 'setup' ? 'bg-slate-800 text-amber-400' : 'text-slate-400 hover:text-white'
-                  }`}
-                  title="Receptionist Settings & Prompt"
-                >
-                  <Settings className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setIsOpen(false)}
-                  className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Navigation Tabs */}
-            <div className="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold">
+            {/* Header: Solid Royal Blue Bar matching screenshot */}
+            <div className="bg-[#0b5ed7] text-white px-5 py-4 flex items-center justify-between">
+              <h3 className="font-bold text-lg tracking-tight font-display text-white">
+                Talk to us!
+              </h3>
               <button
-                onClick={() => setActiveTab('call')}
-                className={`flex-1 py-2.5 text-center transition-colors cursor-pointer ${
-                  activeTab === 'call'
-                    ? 'border-b-2 border-amber-500 text-slate-900 bg-white font-bold'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
+                onClick={() => {
+                  if (callStatus === 'connected' || callStatus === 'speaking') {
+                    handleEndCall();
+                  }
+                  setIsOpen(false);
+                }}
+                className="text-white hover:text-blue-100 p-1 rounded-md transition-colors cursor-pointer"
+                aria-label="Close widget"
               >
-                Live Voice Call
-              </button>
-              <button
-                onClick={() => setActiveTab('setup')}
-                className={`flex-1 py-2.5 text-center transition-colors cursor-pointer flex items-center justify-center gap-1 ${
-                  activeTab === 'setup'
-                    ? 'border-b-2 border-amber-500 text-slate-900 bg-white font-bold'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <span>AI Reception Settings</span>
-                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <ChevronDown className="w-6 h-6 stroke-[2.5]" />
               </button>
             </div>
 
-            {/* Body: Tab 1 (Live Voice Call) */}
-            {activeTab === 'call' && (
-              <div className="p-5 flex-1 overflow-y-auto space-y-4">
+            {/* Card Content Area matching screenshot */}
+            <div className="p-6 pt-7 pb-5 flex flex-col items-center text-center space-y-4">
+              
+              {/* Circular Avatar with Blue Ring and Green Online Indicator */}
+              <div className="relative">
+                <div className="w-24 h-24 rounded-full p-1 ring-4 ring-[#0b5ed7]/25 border-2 border-[#0b5ed7] shadow-md bg-white">
+                  <div className="w-full h-full rounded-full overflow-hidden bg-slate-100">
+                    <img
+                      src="/assets/crops/receptionist_paul.png"
+                      alt="Paul - AI Voice Receptionist"
+                      className="w-full h-full object-cover object-center"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                </div>
+
+                {/* Green Status Dot matching screenshot */}
+                <span className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-[#198754] border-2 border-white shadow-xs"></span>
+              </div>
+
+              {/* Name & Title matching screenshot */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-center gap-2">
+                  <h4 className="text-xl font-extrabold text-slate-900 tracking-tight">
+                    Paul
+                  </h4>
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[11px] font-bold text-slate-600">
+                    AI
+                  </span>
+                </div>
+                <p className="text-sm font-semibold text-slate-500">
+                  AI Voice Receptionist
+                </p>
+              </div>
+
+              {/* Action Buttons Section */}
+              <div className="w-full space-y-2.5 pt-1">
                 
-                {/* Visualizer & Status Avatar */}
-                <div className="text-center py-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col items-center justify-center">
-                  <div className="relative mb-3">
-                    <div
-                      className={`w-20 h-20 rounded-full flex items-center justify-center border-4 transition-all duration-300 ${
-                        callStatus === 'speaking'
-                          ? 'border-amber-400 bg-amber-50 ring-8 ring-amber-400/20 scale-105'
-                          : callStatus === 'connected'
-                          ? 'border-emerald-500 bg-emerald-50 ring-4 ring-emerald-400/20'
-                          : callStatus === 'connecting'
-                          ? 'border-blue-400 bg-blue-50 animate-pulse'
-                          : 'border-slate-300 bg-white'
-                      }`}
-                    >
-                      {callStatus === 'idle' ? (
-                        <Mic className="w-8 h-8 text-slate-400" />
-                      ) : (
-                        <Volume2
-                          className={`w-8 h-8 ${
-                            callStatus === 'speaking'
-                              ? 'text-amber-500'
-                              : callStatus === 'connected'
-                              ? 'text-emerald-600'
-                              : 'text-blue-500'
-                          }`}
-                        />
-                      )}
+                {/* Button 1: "Call us here" (or Active Call Bar if calling) */}
+                {callStatus === 'idle' ? (
+                  <button
+                    onClick={handleStartCall}
+                    className="w-full py-3 px-4 rounded-2xl border-2 border-[#0b5ed7] bg-white hover:bg-blue-50/50 text-[#0b5ed7] font-bold text-sm flex items-center justify-center gap-2.5 shadow-xs hover:shadow-md transition-all active:scale-[0.98] cursor-pointer"
+                  >
+                    <Mic className="w-5 h-5 stroke-[2.2]" />
+                    <span>Call us here</span>
+                  </button>
+                ) : (
+                  /* Active Call State Controls */
+                  <div className="p-3.5 rounded-2xl bg-slate-900 text-white space-y-3 shadow-lg animate-in fade-in">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span className="text-xs font-bold text-emerald-400">
+                          {callStatus === 'connecting'
+                            ? 'Connecting...'
+                            : callStatus === 'speaking'
+                            ? 'Speaking...'
+                            : 'Listening...'}
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-300">
+                        {formatDuration(callDuration)}
+                      </span>
                     </div>
-                  </div>
 
-                  <div className="space-y-0.5">
-                    <h4 className="text-sm font-bold text-slate-900">
-                      {callStatus === 'idle'
-                        ? 'AI Receptionist Ready'
-                        : callStatus === 'connecting'
-                        ? 'Connecting to AI Reception...'
-                        : callStatus === 'speaking'
-                        ? 'Receptionist is Speaking...'
-                        : 'Listening to you...'}
-                    </h4>
-                    <p className="text-xs text-slate-500">
-                      {callStatus === 'idle'
-                        ? 'Click below to start a live voice conversation'
-                        : `Call Duration: ${formatDuration(callDuration)}`}
-                    </p>
-                  </div>
-
-                  {/* Audio Wave Bar Indicators */}
-                  {(callStatus === 'connected' || callStatus === 'speaking') && (
-                    <div className="flex items-center gap-1 mt-3">
-                      {[12, 24, 18, 30, 16, 28, 14, 22].map((height, i) => (
+                    {/* Audio wave pulse */}
+                    <div className="flex items-center justify-center gap-1 py-1">
+                      {[10, 22, 14, 28, 16, 24, 12, 20].map((h, i) => (
                         <span
                           key={i}
                           className="w-1 bg-amber-400 rounded-full transition-all duration-150"
                           style={{
-                            height: callStatus === 'speaking' ? `${height}px` : '6px',
-                            animation: callStatus === 'speaking' ? `pulse 0.8s ease-in-out infinite ${i * 0.1}s` : 'none'
+                            height: callStatus === 'speaking' ? `${h}px` : '6px',
+                            animation: callStatus === 'speaking' ? `pulse 0.7s ease-in-out infinite ${i * 0.1}s` : 'none'
                           }}
                         />
                       ))}
                     </div>
-                  )}
-                </div>
 
-                {/* Call Controls */}
-                <div className="flex items-center justify-center gap-3 pt-1">
-                  {callStatus === 'idle' ? (
-                    <button
-                      onClick={handleStartCall}
-                      className="w-full py-3.5 rounded-full font-bold text-xs uppercase tracking-wider bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
-                    >
-                      <PhoneCall className="w-4 h-4" />
-                      <span>Start Voice Call With AI Reception</span>
-                    </button>
-                  ) : (
-                    <>
+                    <div className="flex items-center gap-2">
                       <button
                         onClick={handleToggleMute}
-                        className={`p-3 rounded-full border transition-colors cursor-pointer ${
-                          isMuted ? 'bg-amber-100 border-amber-300 text-amber-800' : 'bg-slate-100 border-slate-200 text-slate-700'
+                        className={`p-2 rounded-xl text-xs font-semibold flex items-center justify-center transition-colors cursor-pointer ${
+                          isMuted ? 'bg-amber-100 text-amber-900' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                         }`}
                         title={isMuted ? 'Unmute microphone' : 'Mute microphone'}
                       >
-                        {isMuted ? <MicOff className="w-5 h-5 text-rose-500" /> : <Mic className="w-5 h-5" />}
+                        {isMuted ? <MicOff className="w-4 h-4 text-rose-400" /> : <Mic className="w-4 h-4" />}
                       </button>
 
                       <button
                         onClick={handleEndCall}
-                        className="flex-1 py-3.5 rounded-full font-bold text-xs uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95"
+                        className="flex-1 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                       >
                         <PhoneOff className="w-4 h-4" />
-                        <span>End Voice Call</span>
+                        <span>End Call</span>
                       </button>
-                    </>
-                  )}
-                </div>
-
-                {/* Live Conversation Transcript */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                    <span>Live Transcripts</span>
-                    <span className="text-[10px] text-amber-600 font-normal">Real-Time</span>
+                    </div>
                   </div>
-                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 max-h-40 overflow-y-auto">
+                )}
+
+                {/* Button 2: "Open Interactive Phone Display" matching screenshot */}
+                <button
+                  onClick={() => setShowPhoneDisplay(!showPhoneDisplay)}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-[#f0f6ff] hover:bg-[#e4efff] border border-blue-100 text-slate-700 font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Smartphone className="w-4 h-4 text-[#0b5ed7]" />
+                  <span>{showPhoneDisplay ? 'Hide Phone Display' : 'Open Interactive Phone Display'}</span>
+                </button>
+
+                {/* Button 3: "Direct Line: 021 082 57495" matching screenshot */}
+                <a
+                  href={COMPANY_INFO.phoneTel}
+                  className="w-full py-2.5 px-4 rounded-2xl bg-[#f0f6ff] hover:bg-[#e4efff] border border-blue-100 text-[#0b5ed7] font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Phone className="w-4 h-4 text-[#0b5ed7]" />
+                  <span>Direct Line: {COMPANY_INFO.phone}</span>
+                </a>
+              </div>
+
+              {/* Collapsible Interactive Phone Display */}
+              {showPhoneDisplay && (
+                <div className="w-full mt-2 p-3 bg-slate-50 rounded-2xl border border-slate-200 text-left space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <span>Live Conversation Log</span>
+                    <span className="text-emerald-600">Active</span>
+                  </div>
+                  <div className="space-y-1.5 max-h-32 overflow-y-auto text-xs">
                     {transcripts.map((t, idx) => (
                       <div
                         key={idx}
-                        className={`p-2 rounded-lg text-xs leading-relaxed ${
+                        className={`p-2 rounded-xl text-[11px] leading-relaxed ${
                           t.sender === 'ai'
                             ? 'bg-white border border-slate-200 text-slate-800'
-                            : 'bg-amber-100/70 border border-amber-200 text-slate-900 ml-4'
+                            : 'bg-blue-100 text-slate-900 ml-3'
                         }`}
                       >
-                        <span className="font-bold text-[10px] uppercase text-slate-400 block mb-0.5">
-                          {t.sender === 'ai' ? 'Signature AI' : 'You'}
+                        <span className="font-bold text-[9px] uppercase text-slate-400 block">
+                          {t.sender === 'ai' ? 'Paul (AI)' : 'You'}
                         </span>
                         {t.text}
                       </div>
                     ))}
                   </div>
                 </div>
+              )}
 
-                {/* Notice if keys are simulated vs live */}
-                {(!publicKey || publicKey === 'YOUR_VAPI_PUBLIC_KEY') && (
-                  <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
-                    <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span>Running in Preview Simulator mode. Click <strong>"AI Reception Settings"</strong> tab above to connect your real Assistant ID!</span>
-                    </div>
-                  </div>
-                )}
+              {/* Footer matching screenshot */}
+              <div className="w-full pt-3 border-t border-slate-100 text-center">
+                <p className="text-[11px] text-slate-400 font-medium">
+                  Powered by <span className="font-bold text-[#0b5ed7]">Signature Paint</span>
+                </p>
               </div>
-            )}
 
-            {/* Body: Tab 2 (AI Reception Settings & Setup Guide) */}
-            {activeTab === 'setup' && (
-              <div className="p-5 flex-1 overflow-y-auto space-y-5 text-xs">
-                
-                <div className="space-y-1">
-                  <h4 className="font-bold text-sm text-[#0b1a30] flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                    <span>AI Receptionist Configuration</span>
-                  </h4>
-                  <p className="text-slate-600 leading-relaxed">
-                    Here are the configuration settings and prompt to power your Auckland painting voice assistant:
-                  </p>
-                </div>
-
-                {/* 1. Public API Key & Assistant ID Inputs */}
-                <form onSubmit={handleSaveKeys} className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
-                  <div className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                    1. Voice Assistant Credentials:
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-0.5">
-                      Public API Key (Safe for frontend):
-                    </label>
-                    <input
-                      type="text"
-                      value={publicKey}
-                      onChange={(e) => setPublicKey(e.target.value)}
-                      placeholder="e.g. 59f71c42-83b6-4b82-..."
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-mono"
-                    />
-                    <span className="text-[10px] text-slate-400">Account API Public Key</span>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-0.5">
-                      Assistant ID:
-                    </label>
-                    <input
-                      type="text"
-                      value={assistantId}
-                      onChange={(e) => setAssistantId(e.target.value)}
-                      placeholder="e.g. 48a27d91-3e01-49b2-..."
-                      className="w-full px-3 py-1.5 rounded-lg border border-slate-300 text-xs bg-white font-mono"
-                    />
-                    <span className="text-[10px] text-slate-400">Your Voice Assistant ID</span>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2 rounded-lg font-bold bg-[#0b1a30] hover:bg-slate-800 text-white cursor-pointer transition-colors"
-                  >
-                    Save & Apply Credentials
-                  </button>
-                </form>
-
-                {/* 2. System Prompt Ready to Copy */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                      2. Receptionist Prompt (System Instructions):
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyPrompt}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-100 hover:bg-amber-200 text-amber-800 font-bold text-[10px] cursor-pointer transition-colors"
-                    >
-                      {copiedPrompt ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedPrompt ? 'Copied!' : 'Copy Prompt'}</span>
-                    </button>
-                  </div>
-                  <div className="p-3 bg-slate-900 text-slate-200 rounded-xl font-mono text-[10px] max-h-36 overflow-y-auto leading-relaxed border border-slate-800">
-                    {VAPI_CONFIG_GUIDE.systemPrompt}
-                  </div>
-                </div>
-
-                {/* 3. First Message & Recommended Voice */}
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                  <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px] block">
-                    3. First Message & Voice Settings:
-                  </span>
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">First Message:</span>
-                    <p className="text-slate-700 italic">"{VAPI_CONFIG_GUIDE.firstMessage}"</p>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold text-slate-500 uppercase">Recommended Voice:</span>
-                    <p className="text-slate-700 font-medium">{VAPI_CONFIG_GUIDE.voiceRecommendation}</p>
-                  </div>
-                </div>
-
-                {/* 4. What Information the AI Captures */}
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 space-y-1">
-                  <span className="font-bold text-[11px] uppercase tracking-wider block">
-                    4. What Customer Info AI Reception Captures:
-                  </span>
-                  <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
-                    <li>Caller's Full Name & Phone Number</li>
-                    <li>Property Suburb (Papakura, Manukau, Remuera, etc.)</li>
-                    <li>Painting Service (Interior, Exterior, Plastering)</li>
-                    <li>Preferred Day for FREE On-Site Inspection</li>
-                  </ul>
-                </div>
-
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="p-3 bg-slate-100 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-              <span>Signature Premium Paint Services</span>
-              <a href={COMPANY_INFO.phoneTel} className="font-bold text-slate-800 hover:text-amber-600">
-                Direct: {COMPANY_INFO.phone}
-              </a>
             </div>
 
           </div>
