@@ -1,7 +1,7 @@
 export const VAPI_CONFIG_GUIDE = {
-  assistantName: 'Signature Paint Auckland Assistant',
-  firstMessage: 'Hello! Thanks for reaching out to Signature Premium Paint Services in Auckland. I can give you an instant quote, check availability, or answer questions about painting and plastering. How can I help you today?',
-  voiceRecommendation: 'ElevenLabs: Natasha (Warm & Friendly) or Callum / Charlie (Natural Pacific/Kiwi)',
+  assistantName: 'Paul - Signature Paint Auckland Assistant',
+  firstMessage: "Hello! Thanks for reaching out to Signature Premium Paint Services in Auckland. I'm Paul, your AI Receptionist. How can I help you with your painting or plastering project today?",
+  voiceRecommendation: 'ElevenLabs: Callum / Charlie (Natural Pacific/Kiwi) or George',
   systemPrompt: `You are the friendly, professional voice receptionist for "Signature Premium Paint Services", Auckland's premier painting and plastering specialists based in Papakura.
 
 COMPANY OVERVIEW:

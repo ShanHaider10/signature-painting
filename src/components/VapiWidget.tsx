@@ -189,7 +189,22 @@ export const VapiWidget: React.FC = () => {
 
       setCallStatus('connecting');
       if (vapiRef.current) {
-        await vapiRef.current.start(assistantId);
+        // Enforce Paul's identity and prompt so live calls on Vercel always respond as Paul
+        const overrides = {
+          name: 'Paul',
+          firstMessage: VAPI_CONFIG_GUIDE.firstMessage,
+          model: {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: VAPI_CONFIG_GUIDE.systemPrompt
+              }
+            ]
+          }
+        };
+        await vapiRef.current.start(assistantId, overrides as any);
       } else {
         throw new Error('Vapi constructor not available');
       }
