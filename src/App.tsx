@@ -17,6 +17,7 @@ import { ReviewModal } from './components/ReviewModal';
 import { REVIEWS_DATA, COMPANY_INFO } from './data/mockData';
 import { ReviewItem } from './types';
 import { Phone, Calculator } from 'lucide-react';
+import { VapiWidget } from './components/VapiWidget';
 
 export default function App() {
   const [estimateModalOpen, setEstimateModalOpen] = useState(false);
@@ -143,6 +144,10 @@ export default function App() {
         onClose={() => setReviewModalOpen(false)}
         onAddReview={handleAddReview}
       />
+
+      {/* Vapi Voice AI Assistant Widget */}
+      <VapiWidget />
     </div>
   );
 }
+
