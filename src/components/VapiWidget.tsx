@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Vapi from '@vapi-ai/web';
-import { Mic, MicOff, PhoneCall, PhoneOff, ChevronDown, Smartphone, Phone, Sparkles, Volume2 } from 'lucide-react';
+import { Mic, MicOff, PhoneCall, PhoneOff, ChevronDown, Smartphone, Phone, Sparkles, Volume2, AlertCircle } from 'lucide-react';
 import { VAPI_CONFIG_GUIDE } from '../data/vapiPrompt';
 import { COMPANY_INFO } from '../data/mockData';
 
@@ -24,6 +24,7 @@ export const VapiWidget: React.FC = () => {
   const [callStatus, setCallStatus] = useState<'idle' | 'connecting' | 'connected' | 'speaking'>('idle');
   const [isMuted, setIsMuted] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+  const [micError, setMicError] = useState<string | null>(null);
   const [transcripts, setTranscripts] = useState<Array<{ sender: 'ai' | 'user'; text: string }>>([
     {
       sender: 'ai',
@@ -52,6 +53,7 @@ export const VapiWidget: React.FC = () => {
 
           vapiInstance.on('call-start', () => {
             setCallStatus('connected');
+            setMicError(null);
           });
 
           vapiInstance.on('call-end', () => {
@@ -81,8 +83,25 @@ export const VapiWidget: React.FC = () => {
           });
 
           vapiInstance.on('error', (e: any) => {
-            console.error('Vapi error:', e);
-            setCallStatus('idle');
+            console.warn('Vapi error event:', e);
+            const isMicError = 
+              e?.type?.includes('microphone') || 
+              e?.stage?.includes('microphone') || 
+              e?.error?.name === 'NotAllowedError' ||
+              e?.error?.message?.includes('Permission denied');
+
+            if (isMicError) {
+              setMicError('Microphone permission was blocked in your browser. Please allow microphone in your URL bar.');
+              // Fallback to speaker mode so the caller still hears Paul speak!
+              setCallStatus('speaking');
+              if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(VAPI_CONFIG_GUIDE.firstMessage);
+                utterance.onend = () => setCallStatus('connected');
+                window.speechSynthesis.speak(utterance);
+              }
+            } else {
+              setCallStatus('idle');
+            }
             clearInterval(timerRef.current);
           });
 
@@ -116,11 +135,29 @@ export const VapiWidget: React.FC = () => {
   }, [callStatus]);
 
   const handleStartCall = async () => {
+    setMicError(null);
+
+    // Prompt browser for microphone permission cleanly first
+    let micGranted = false;
+    if (navigator?.mediaDevices?.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Release test stream tracks so WebRTC gets full access
+        stream.getTracks().forEach((track) => track.stop());
+        micGranted = true;
+      } catch (micErr: any) {
+        console.warn('Microphone permission check:', micErr);
+        if (micErr.name === 'NotAllowedError' || micErr.message?.includes('Permission denied')) {
+          setMicError('Microphone access is blocked in your browser. Please enable it in your browser address bar.');
+        }
+      }
+    }
+
     const isRealKey = publicKey && publicKey.trim().length > 10;
     const isRealAssistant = assistantId && assistantId.trim().length > 5;
 
-    if (!isRealKey || !isRealAssistant) {
-      // Direct speech simulator: begins calling immediately with zero setup required
+    if (!isRealKey || !isRealAssistant || !micGranted) {
+      // Direct speech speaker simulator: begins calling immediately with zero setup required
       setCallStatus('connecting');
       setTimeout(() => {
         setCallStatus('connected');
@@ -138,7 +175,7 @@ export const VapiWidget: React.FC = () => {
           utterance.onend = () => setCallStatus('connected');
           window.speechSynthesis.speak(utterance);
         }
-      }, 800);
+      }, 600);
       return;
     }
 
@@ -156,8 +193,11 @@ export const VapiWidget: React.FC = () => {
       } else {
         throw new Error('Vapi constructor not available');
       }
-    } catch (err) {
-      console.error('Error starting call:', err);
+    } catch (err: any) {
+      console.warn('Error starting call:', err);
+      if (err?.name === 'NotAllowedError' || err?.message?.includes('Permission denied')) {
+        setMicError('Microphone permission blocked in browser.');
+      }
       // Fallback smoothly to simulated voice
       setCallStatus('connected');
       if ('speechSynthesis' in window) {
@@ -373,6 +413,29 @@ export const VapiWidget: React.FC = () => {
                   <Phone className="w-4 h-4 text-[#0b5ed7]" />
                   <span>Direct Line: {COMPANY_INFO.phone}</span>
                 </a>
+
+                {/* Microphone blocked banner */}
+                {micError && (
+                  <div className="w-full p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-left text-[11px] text-amber-900 space-y-1 animate-in fade-in">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                      <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Microphone access needed</span>
+                    </div>
+                    <p className="text-[10px] text-slate-600 leading-normal">
+                      Click the lock or camera icon in your browser URL bar to allow microphone access, then tap retry.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMicError(null);
+                        handleStartCall();
+                      }}
+                      className="text-[10px] font-bold text-[#0b5ed7] hover:underline cursor-pointer block"
+                    >
+                      Tap here to retry with microphone →
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Collapsible Interactive Phone Display */}
